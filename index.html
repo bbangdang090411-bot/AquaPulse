@@ -167,7 +167,7 @@ async function loadCloudInfo(){
  const manifest=await cloudGet('manifest');
  if(manifest?.format==='aquapulse-chunked-v1'){
   cloudRow={manifest};
-  selected('클라우드 저장본: '+new Date(manifest.createdAt).toLocaleString('ko-KR')+' · 센서 기록 '+manifest.totalRecords+'건 (분할 저장)');
+  selected('Supabase 저장 확인됨: '+new Date(manifest.createdAt).toLocaleString('ko-KR')+' · 총 '+manifest.totalRecords+'건 (센서·경고 포함). 이미 저장되어 있다면 다시 업로드하지 말고 [Supabase 데이터 불러오기]를 누르세요.');
  }else{
   const {data,error:e}=await client.from('aquapulse_user_data').select('payload,updated_at').eq('user_id',activeUser.id).maybeSingle();
   if(e)throw e;
@@ -200,7 +200,18 @@ async function upload(){
  cloudStatus('클라우드 저장 완료: '+manifest.totalRecords+'건');
  unlocked();
  msg.textContent='클라우드 저장 완료 · '+manifest.totalRecords+'건';
- }catch(e){console.error(e);cloudStatus('저장 실패: '+e.message+' · 브라우저 원본은 유지됩니다. 다시 시도할 수 있습니다.');alert('Supabase 저장 실패: '+e.message)}finally{busy=false}
+ }catch(e){console.error(e);
+  try{
+    const saved=await cloudGet('manifest');
+    if(saved?.format==='aquapulse-chunked-v1'&&saved.totalRecords>0){
+      const expected=Object.values(saved.stores||{}).reduce((n,st)=>n+(st.chunks||0),0);
+      const {count,error:checkError}=await client.from(CLOUD_TABLE).select('data_key',{count:'exact',head:true}).eq('owner_id',activeUser.id).like('data_key','chunk:%');
+      if(!checkError&&count>=expected){cloudRow={manifest:saved};unlocked();msg.textContent='저장 완료 확인: '+saved.totalRecords+'건 · 오류 메시지 이후 서버에서 저장 상태 확인됨';return}
+    }
+  }catch(checkError){console.warn('Cloud verification failed',checkError)}
+  cloudStatus('저장 확인 실패: '+e.message+' · 기존 데이터는 유지됩니다.');
+  alert('Supabase 저장 확인 실패: '+e.message+'\\n다시 업로드하기 전에 화면을 새로고침해 저장본이 표시되는지 확인하세요.');
+ }finally{busy=false}
 }
 async function download(){
  if(busy||!cloudRow)return;
