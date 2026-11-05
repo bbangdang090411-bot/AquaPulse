@@ -253,7 +253,30 @@ async function beginSession(){
   const manifest=await cloudGet('manifest');
   if(manifest?.format==='aquapulse-chunked-v1'){
    cloudRow={manifest};
-   msg.textContent='Supabase 저장본 '+manifest.totalRecords+'건 확인 · [클라우드에서 불러오기]로 동기화';
+   msg.textContent='Supabase 저장본 '+manifest.totalRecords+'건 확인 · 데이터 동기화 준비';
+   // GitHub Pages and Cloudflare Workers have separate browser storage.
+   // Import once only when this origin has no meaningful existing AquaPulse data.
+   const syncedKey='aquapulse-cloud-restored-user';
+   const alreadySynced=localStorage.getItem(syncedKey)===activeUser.id;
+   let hasLocalData=false;
+   for(let i=0;i<localStorage.length;i++){
+    const k=localStorage.key(i);
+    if(k.startsWith('aquapulse-')&&k!==syncedKey&&k!=='aquapulse-cloud-sync-status'){
+     hasLocalData=true;break;
+    }
+   }
+   if(!hasLocalData){
+    try{
+     const localDb=await apReadDb();
+     hasLocalData=Object.values(localDb?.stores||{}).some(store=>(store.values||[]).length>0);
+    }catch(e){console.warn('Local data check failed; skipping automatic restore to protect data',e);hasLocalData=true}
+   }
+   if(!alreadySynced&&!hasLocalData){
+    msg.textContent='새 배포 주소 감지 · Supabase에서 수조와 센서 데이터를 자동 복원하는 중…';
+    await download(true);
+   }else{
+    msg.textContent=alreadySynced?'대시보드 준비 완료 · 이전에 복원한 데이터 사용 중':'기존 브라우저 데이터 보호 중 · 클라우드 저장본을 사용하려면 [클라우드에서 불러오기]를 누르세요.';
+   }
   }else{
    const {data,error:e}=await client.from('aquapulse_user_data').select('payload,updated_at').eq('user_id',activeUser.id).maybeSingle();
    if(e)throw e;
