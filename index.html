@@ -251,6 +251,7 @@ async function beginSession(){
  msg.textContent='대시보드 사용 가능 · Supabase 저장본 확인 중…';
  try{
   const manifest=await cloudGet('manifest');
+  startTankSync();
   if(manifest?.format==='aquapulse-chunked-v1'){
    cloudRow={manifest};
    msg.textContent='Supabase 저장본 '+manifest.totalRecords+'건 확인 · 데이터 동기화 준비';
@@ -333,6 +334,59 @@ login.addEventListener('submit',async e=>{
 });
 document.getElementById('apCloudUpload').onclick=upload;
 document.getElementById('apCloudDownload').onclick=download;
+
+// Lightweight cross-domain tank synchronization. Historical sensor CSV data stays
+// in the existing chunked backup; never rewrite the 60k-record manifest on edits.
+let tankSyncTimer=null,tankSyncBusy=false,tankSyncLastSeen='',tankSyncInitialized=false;
+const tankSyncKey='aquapulse-imported-tanks-v2';
+async function tankSyncRead(){
+ if(!activeUser||tankSyncBusy)return;
+ try{
+  const remote=await cloudGet('live:tanks');
+  if(!remote||!Array.isArray(remote.tanks)){
+   // Only a browser that already has tank records can initialize the shared state.
+   const local=JSON.parse(localStorage.getItem(tankSyncKey)||'[]');
+   if(Array.isArray(local)&&local.length){
+    const state={tanks:local,updatedAt:new Date().toISOString()};
+    await cloudPut('live:tanks',state);
+    tankSyncLastSeen=state.updatedAt;
+   }
+   return;
+  }
+  if(remote.updatedAt===tankSyncLastSeen)return;
+  tankSyncLastSeen=remote.updatedAt;
+  const local=JSON.parse(localStorage.getItem(tankSyncKey)||'[]');
+  if(JSON.stringify(local)!==JSON.stringify(remote.tanks)){
+   localStorage.setItem(tankSyncKey,JSON.stringify(remote.tanks));
+   // Existing dashboard keeps its tank list in memory, so reload to redraw it.
+   location.reload();
+  }
+ }catch(e){console.warn('Tank sync check failed',e)}
+}
+async function tankSyncWrite(){
+ if(!activeUser||tankSyncBusy)return;
+ tankSyncBusy=true;
+ try{
+  const local=JSON.parse(localStorage.getItem(tankSyncKey)||'[]');
+  if(!Array.isArray(local))return;
+  const state={tanks:local,updatedAt:new Date().toISOString()};
+  await cloudPut('live:tanks',state);
+  tankSyncLastSeen=state.updatedAt;
+ }catch(e){console.warn('Tank sync save failed',e);msg.textContent='수족관 변경사항의 클라우드 동기화 실패 · 연결 확인 필요'}
+ finally{tankSyncBusy=false}
+}
+window.addEventListener('aquapulse:tanks-changed',()=>{
+ if(!activeUser)return;
+ clearTimeout(tankSyncTimer);
+ tankSyncTimer=setTimeout(tankSyncWrite,900);
+});
+function startTankSync(){
+ if(tankSyncInitialized)return;
+ tankSyncInitialized=true;
+ tankSyncRead();
+ setInterval(()=>{if(activeUser&&!document.hidden)tankSyncRead()},15000);
+}
+
 document.getElementById('apCloudSave').onclick=upload;
 document.getElementById('apCloudLoad').onclick=async()=>{try{await loadCloudInfo();if(cloudRow)await download()}catch(e){alert(e.message)}};
 async function logout(){if(client)await client.auth.signOut();activeUser=null;locked()}
