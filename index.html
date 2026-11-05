@@ -253,7 +253,10 @@ async function beginSession(){
  if(cloudRow){
   const hasLocal=!!localStorage.getItem('aquapulse-imported-tanks-v2');
   if(hasLocal){
-   selected('기존 브라우저 데이터가 발견되었습니다. 데이터 손실을 막기 위해 최초 1회 저장본을 선택해 주세요.');
+   // The dashboard already has browser data: do not block it with a sync-choice modal.
+   // Cloud restore remains available from the toolbar and requires explicit confirmation.
+   unlocked();
+   msg.textContent='대시보드 표시 중 · 기존 브라우저 데이터 유지. Supabase 저장본을 사용하려면 [클라우드에서 불러오기]를 선택하세요.';
   }else{
    selected('Supabase 데이터를 자동으로 불러오는 중입니다. 잠시 기다려 주세요.');
    await download(true);
