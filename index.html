@@ -246,26 +246,24 @@ async function beginSession(){
  const {data:{user},error:authError}=await client.auth.getUser();
  if(authError||!user){activeUser=null;locked();return}
  activeUser=user;
+ // Authentication is sufficient to enter the dashboard. Cloud restore must never block it.
+ unlocked();
+ msg.textContent='대시보드 사용 가능 · Supabase 저장본 확인 중…';
  try{
- await loadCloudInfo();
- const restored=localStorage.getItem('aquapulse-cloud-restored-user')===activeUser.id;
- if(restored){unlocked();return}
- if(cloudRow){
-  const hasLocal=!!localStorage.getItem('aquapulse-imported-tanks-v2');
-  if(hasLocal){
-   // The dashboard already has browser data: do not block it with a sync-choice modal.
-   // Cloud restore remains available from the toolbar and requires explicit confirmation.
-   unlocked();
-   msg.textContent='대시보드 표시 중 · 기존 브라우저 데이터 유지. Supabase 저장본을 사용하려면 [클라우드에서 불러오기]를 선택하세요.';
+  const manifest=await cloudGet('manifest');
+  if(manifest?.format==='aquapulse-chunked-v1'){
+   cloudRow={manifest};
+   msg.textContent='Supabase 저장본 '+manifest.totalRecords+'건 확인 · [클라우드에서 불러오기]로 동기화';
   }else{
-   selected('Supabase 데이터를 자동으로 불러오는 중입니다. 잠시 기다려 주세요.');
-   await download(true);
+   const {data,error:e}=await client.from('aquapulse_user_data').select('payload,updated_at').eq('user_id',activeUser.id).maybeSingle();
+   if(e)throw e;
+   cloudRow=data;
+   msg.textContent=data?'Supabase 저장본 확인 · [클라우드에서 불러오기]로 동기화':'클라우드 저장본 없음 · [클라우드에 저장]으로 백업 가능';
   }
- }else{
-  unlocked();
-  msg.textContent='Supabase 저장본이 없습니다. 브라우저 데이터를 확인한 후 클라우드에 저장하세요.';
+ }catch(e){
+  console.error('Cloud sync check:',e);
+  msg.textContent='대시보드는 정상 사용 가능 · Supabase 확인 실패: '+e.message;
  }
- }catch(e){console.error(e);selected('Supabase 데이터 확인 실패: '+e.message)}
 }
 async function init(){
  try{
