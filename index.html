@@ -106,7 +106,7 @@ const demoTemperatureRanges=[
  [22,27],[24,29],[20,25],[23,28],[21,26],[25,29],[22,26],[24,28],[20,24],[23,27]
 ];
 function demoTemperatureForTank(t){
- const match=String(t?.id||'').match(/^TANK-(\\d{3})$/);
+ const match=String(t?.id||'').match(/^TANK-(\d{3})$/);
  if(!match)return null;
  const index=Number(match[1])-1;
  return index>=0&&index<demoTemperatureRanges.length?demoTemperatureRanges[index]:null;
@@ -416,7 +416,12 @@ async function tankSyncRead(){
    return;
   }
   if(remote.updatedAt===tankSyncLastSeen)return;
-  applyDemoTemperatureDefaults(remote.tanks);
+  const defaultsAdded=applyDemoTemperatureDefaults(remote.tanks);
+  if(defaultsAdded){
+   const normalized={tanks:remote.tanks,updatedAt:new Date().toISOString()};
+   await cloudPut('live:tanks',normalized);
+   remote.updatedAt=normalized.updatedAt;
+  }
   tankSyncLastSeen=remote.updatedAt;
   const local=JSON.parse(localStorage.getItem(tankSyncKey)||'[]');
   if(JSON.stringify(local)!==JSON.stringify(remote.tanks)){
