@@ -1,0 +1,26 @@
+name: Validate AquaPulse
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate inline JavaScript syntax
+        run: |
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const vm=require('node:vm');
+          const html=fs.readFileSync('index.html','utf8');
+          const scripts=[...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)]
+            .map(m=>m[1]).filter(x=>x.trim());
+          if(!scripts.length)throw Error('No inline scripts found');
+          for(let i=0;i<scripts.length;i++)new vm.Script(scripts[i],{filename:'index.html:inline-script-'+(i+1)});
+          console.log('Validated '+scripts.length+' inline script(s).');
+          NODE
