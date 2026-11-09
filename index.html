@@ -53,13 +53,18 @@ header .region-search select{max-width:152px;height:39px}
 header .region-search button{height:39px;white-space:nowrap}
 header .chat-launch,header .tank-more-btn{height:39px;white-space:nowrap;margin:0}
 header .tank-action-wrap{flex:0 0 auto}
+/* Pin the notification button into the unused upper-right header space. */
+header{position:sticky}
+header .tools{padding-right:58px!important}
+header .tools>.ap-notify-wrap{position:absolute!important;top:8px!important;right:16px!important;left:auto!important;bottom:auto!important;margin:0!important;z-index:20}
+@media(max-width:700px){header .tools>.ap-notify-wrap{top:8px!important;right:10px!important}header .tools{padding-right:52px!important}}
 /* Notification control follows the same 40px toolbar baseline as the adjacent controls. */
 header .tools>.ap-notify-wrap{align-self:center!important;display:flex!important;align-items:center!important;margin-top:0!important;margin-bottom:0!important}
 header .tools>.ap-notify-wrap .ap-notify-button{width:42px!important;height:40px!important;min-height:40px!important;padding:0!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;background:#fff!important;border:1px solid #dbe4ef!important;border-radius:10px!important;color:#334155!important;box-shadow:none!important;line-height:1!important}
 header .tools>.ap-notify-wrap .ap-notify-button svg{display:block;flex:none}
 header .tools>.ap-notify-wrap .ap-notify-dot{width:9px;height:9px;top:5px;right:5px}
 /* Keep the notification bell at the far right of the header and anchor its dropdown to the viewport. */
-header .tools>.ap-notify-wrap{order:99!important;margin-left:auto!important;position:static!important;flex:0 0 auto}
+header .tools>.ap-notify-wrap{order:99!important;flex:0 0 auto}
 header .tools>.ap-notify-wrap .ap-notify-panel{position:fixed!important;top:var(--ap-notify-top,110px)!important;left:auto!important;right:16px!important;width:min(370px,calc(100vw - 32px))!important;max-height:min(520px,calc(100dvh - 130px))!important;z-index:99999!important}
 header .tools>.ap-notify-wrap .ap-notify-list{max-height:min(390px,calc(100dvh - 245px));overflow-y:auto}
 header .tools>.ap-notify-wrap .ap-notify-item{font-size:13px;line-height:1.5;white-space:normal;overflow-wrap:anywhere}
