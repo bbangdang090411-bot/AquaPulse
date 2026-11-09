@@ -51,6 +51,13 @@ header .region-search select{max-width:152px;height:39px}
 header .region-search button{height:39px;white-space:nowrap}
 header .chat-launch,header .tank-more-btn{height:39px;white-space:nowrap;margin:0}
 header .tank-action-wrap{flex:0 0 auto}
+/* Keep the aquarium action directly under the help chatbot on desktop. */
+header .chat-launch{order:20}
+header .tank-action-wrap{order:21;flex-basis:100%;display:flex;justify-content:flex-end}
+header .tank-action-wrap .tank-more-btn{min-width:110px}
+@media(min-width:701px){header .tools{position:relative;padding-bottom:45px}header .tank-action-wrap{position:absolute;right:0;bottom:0;flex-basis:auto}}
+@media(max-width:700px){header .tank-action-wrap{flex-basis:auto;justify-content:flex-start}header .tools{padding-bottom:0}}
+
 .layout{min-height:calc(100vh - 66px)}
 aside{top:66px;height:calc(100vh - 66px)}
 @media(max-width:1450px){header{grid-template-columns:1fr;gap:8px}header .tools{width:100%}aside{top:0;height:calc(100vh - 66px)}}
