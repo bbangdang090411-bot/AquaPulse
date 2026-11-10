@@ -56,7 +56,7 @@ header .tank-action-wrap{flex:0 0 auto}
 /* Pin the notification button into the unused upper-right header space. */
 header{position:sticky}
 header .tools{padding-right:58px!important}
-header .tools>.ap-notify-wrap{position:absolute!important;top:8px!important;right:16px!important;left:auto!important;bottom:auto!important;margin:0!important;z-index:20}
+header .tools>.ap-notify-wrap{position:fixed!important;top:8px!important;right:16px!important;left:auto!important;bottom:auto!important;margin:0!important;z-index:1001!important}
 @media(max-width:700px){header .tools>.ap-notify-wrap{top:8px!important;right:10px!important}header .tools{padding-right:52px!important}}
 /* Notification control follows the same 40px toolbar baseline as the adjacent controls. */
 header .tools>.ap-notify-wrap{align-self:center!important;display:flex!important;align-items:center!important;margin-top:0!important;margin-bottom:0!important}
@@ -65,7 +65,7 @@ header .tools>.ap-notify-wrap .ap-notify-button svg{display:block;flex:none}
 header .tools>.ap-notify-wrap .ap-notify-dot{width:9px;height:9px;top:5px;right:5px}
 /* Keep the notification bell at the far right of the header and anchor its dropdown to the viewport. */
 header .tools>.ap-notify-wrap{order:99!important;flex:0 0 auto}
-header .tools>.ap-notify-wrap .ap-notify-panel{position:fixed!important;top:var(--ap-notify-top,110px)!important;left:auto!important;right:16px!important;width:min(370px,calc(100vw - 32px))!important;max-height:min(520px,calc(100dvh - 130px))!important;z-index:99999!important}
+header .tools>.ap-notify-wrap .ap-notify-panel{position:fixed!important;top:var(--ap-notify-top,56px)!important;left:auto!important;right:16px!important;width:min(370px,calc(100vw - 32px))!important;max-height:min(520px,calc(100dvh - 130px))!important;z-index:99999!important}
 header .tools>.ap-notify-wrap .ap-notify-list{max-height:min(390px,calc(100dvh - 245px));overflow-y:auto}
 header .tools>.ap-notify-wrap .ap-notify-item{font-size:13px;line-height:1.5;white-space:normal;overflow-wrap:anywhere}
 /* Notification inbox: unread red dot indicates newly accumulated aquarium warnings. */
@@ -194,7 +194,7 @@ function renderNotificationInbox(){
  list.innerHTML=items.length?items.map(a=>'<button type="button" class="ap-notify-item '+(!apNotifySeen[a.key]?'unread':'')+'" data-notify-tank="'+escapeHTML(a.t.id)+'" data-notify-key="'+escapeHTML(a.key)+'"><strong>'+(!apNotifySeen[a.key]?'● ':'')+escapeHTML(a.t.name)+'</strong><small>'+escapeHTML(a.c.issues.join(', '))+'</small></button>').join(''):'<div class="ap-notify-empty">현재 확인할 이상 알림이 없습니다.</div>';
 }
 function apMarkNotificationRead(key){apNotifySeen[key]=true;try{localStorage.setItem(apNotifySeenKey,JSON.stringify(apNotifySeen))}catch(e){console.warn('Notification read state save failed',e)}renderNotificationInbox()}
-$('apNotifyButton').addEventListener('click',()=>{const panel=$('apNotifyPanel');const pos=$('apNotifyButton').getBoundingClientRect();document.documentElement.style.setProperty('--ap-notify-top',Math.min(pos.bottom+8,window.innerHeight-140)+'px');panel.hidden=!panel.hidden;$('apNotifyButton').setAttribute('aria-expanded',String(!panel.hidden));renderNotificationInbox()});
+$('apNotifyButton').addEventListener('click',()=>{const panel=$('apNotifyPanel');const pos=$('apNotifyButton').getBoundingClientRect();document.documentElement.style.setProperty('--ap-notify-top',Math.max(52,Math.min(pos.bottom+8,window.innerHeight-140))+'px');panel.hidden=!panel.hidden;$('apNotifyButton').setAttribute('aria-expanded',String(!panel.hidden));renderNotificationInbox()});
 $('apNotifyReadAll').addEventListener('click',()=>{for(const a of apCurrentNotifications())apNotifySeen[a.key]=true;try{localStorage.setItem(apNotifySeenKey,JSON.stringify(apNotifySeen))}catch{}renderNotificationInbox()});
 $('apNotifyAll').addEventListener('click',()=>{$('apNotifyPanel').hidden=true;$('apNotifyButton').setAttribute('aria-expanded','false');setView('alerts')});
 $('apNotifyList').addEventListener('click',e=>{const button=e.target.closest('[data-notify-tank]');if(!button)return;apMarkNotificationRead(button.dataset.notifyKey);$('apNotifyPanel').hidden=true;$('apNotifyButton').setAttribute('aria-expanded','false');selectTank(button.dataset.notifyTank)});
