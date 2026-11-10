@@ -251,7 +251,40 @@ document.getElementById('apExtraGrid').addEventListener('click',async e=>{
  if(action==='risk'){document.getElementById('apExtraRisk').innerHTML=tanks.map(t=>({t,c:condition(t),score:sensorDiagnostics(t).length*3+condition(t).issues.length*2})).sort((a,b)=>b.score-a.score).slice(0,15).map(x=>'<p>'+apExtraEscape(x.t.name)+' · 점검 점수 '+x.score+'</p>').join('')}
  if(action==='backup'){const keys=Object.keys(localStorage).filter(x=>x.startsWith('aquapulse-'));document.getElementById('apExtraBackup').textContent='수족관 '+tanks.length+'대 · 저장 항목 '+keys.length+'개 · 복구 후보 '+keys.filter(x=>/backup|unsaved|conflict/.test(x)).length+'개. 복원은 기존 클라우드 메뉴에서 진행하세요.'}
  if(action==='export'){const blob=new Blob([JSON.stringify({format:'aquapulse-settings-backup-v1',at:new Date().toISOString(),tanks,upgrade:apExtra},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='aquapulse-settings.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),3000)}
- if(action==='ai'){const out=document.getElementById('apExtraAi');out.textContent='Gemini 보고서 생성 중…';try{const data=tanks.map(t=>{const c=condition(t),l=getLimits(t.id);return {id:t.id,name:t.name,temp:t.temp,level:t.level,turb:t.turb,power:t.power,minTemp:l.minTemp,maxTemp:l.maxTemp,status:c.label,issues:c.issues}});const r=await window.apGeminiClient.functions.invoke('aquapulse-chat',{body:{question:'시연 CSV 기반 30대 수족관의 이상 원인, 점검 우선순위와 조치 방법을 한국어 보고서로 작성해 줘. 실측 센서가 아니라는 점을 명시해.',tanks:data}});if(r.error)throw r.error;out.textContent=r.data?.answer||'빈 응답'}catch(err){out.textContent='Gemini 호출 실패: '+(err.message||err)}}
+ if(action==='ai'){
+ const out=document.getElementById('apExtraAi');
+ const button=document.querySelector('[data-extra-action="ai"]');
+ if(button?.disabled)return;
+ if(button)button.disabled=true;
+ out.textContent='Gemini 보고서 생성 중…';
+ try{
+  const client=window.apGeminiClient;
+  if(!client)throw Error('Supabase 연결이 준비되지 않았습니다. 로그인 후 다시 시도해 주세요.');
+  const sessionResult=await client.auth.getSession();
+  const token=sessionResult.data?.session?.access_token;
+  if(!token)throw Error('로그인 세션이 만료되었습니다. 다시 로그인해 주세요.');
+  const data=tanks.map(t=>{const c=condition(t),l=getLimits(t.id);return {id:t.id,name:t.name,temp:t.temp,level:t.level,turb:t.turb,power:t.power,minTemp:l.minTemp,maxTemp:l.maxTemp,status:c.label,issues:c.issues}});
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),45000);
+  let response;
+  try{
+   response=await fetch('https://yfsmoqdmhclaeabbheih.supabase.co/functions/v1/aquapulse-chat',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+token,'apikey':'sb_publishable_rnd5Q81240TZ6r-uyeWbIw_2M7zi91c'},
+    body:JSON.stringify({question:'시연 CSV 기반 수족관의 이상 원인, 점검 우선순위와 조치 방법을 한국어 보고서로 작성해 줘. 실측 센서가 아니라는 점을 명시해.',tanks:data}),
+    signal:controller.signal
+   });
+  }finally{clearTimeout(timer)}
+  const result=await response.json().catch(()=>({}));
+  if(!response.ok)throw Error(result.error||('서버 응답 오류 (HTTP '+response.status+')'));
+  if(!result.answer)throw Error('Gemini 응답이 비어 있습니다.');
+  out.textContent=result.answer;
+ }catch(err){
+  const message=err?.name==='AbortError'?'서버 응답 시간이 초과되었습니다.':(err?.message||String(err));
+  out.textContent='Gemini 보고서 생성 실패: '+message+'\\n서버 연결 또는 인증 설정을 확인해 주세요.';
+  console.error('AquaPulse Gemini report:',err);
+ }finally{if(button)button.disabled=false}
+}
 });
 function renderAlertToasts(){const root=$('alertToastStack');if(!root)return;root.innerHTML='';return;const alerts=tanks.map(t=>({t,c:condition(t)})).filter(x=>x.c.kind!=='ok').map(({t,c})=>({t,c,key:String(t.id)+'|'+c.label+'|'+c.issues.join('|')})).filter(a=>!dismissedAlerts[a.key]);const visible=alerts.slice(0,5);root.innerHTML=visible.map(a=>'<div class="alert-toast '+(a.c.kind==='warn'?'sensor':'')+'"><button class="alert-open" type="button" data-alert-tank="'+escapeHTML(a.t.id)+'"><strong>'+(a.c.kind==='warn'?'센서 확인 필요':'수족관 주의 알림')+' · '+escapeHTML(a.t.name)+'</strong><small>'+escapeHTML(a.c.issues.join(', '))+'</small><span class="alert-link">수족관 상세 보기 →</span></button><button class="alert-dismiss" type="button" data-alert-dismiss="'+escapeHTML(a.key)+'" aria-label="'+escapeHTML(a.t.name)+' 알림 닫기">×</button></div>').join('')+(alerts.length>5?'<div class="alert-more">추가 알림 '+(alerts.length-5)+'건 · 중앙 모니터링에서 확인</div>':'');}document.addEventListener('click',e=>{const close=e.target.closest('[data-alert-dismiss]');if(close){dismissedAlerts[close.dataset.alertDismiss]=true;try{sessionStorage.setItem(alertDismissKey,JSON.stringify(dismissedAlerts))}catch{}renderAlertToasts();return}const open=e.target.closest('[data-alert-tank]');if(open){const id=open.dataset.alertTank;if(tanks.some(t=>t.id===id)){selected=id;setView('detail');window.scrollTo({top:0,behavior:'smooth'})}}});function sensorDiagnostics(t){
  const issues=[];
