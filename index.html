@@ -616,7 +616,18 @@ login.addEventListener('submit',async e=>{
   }
  }catch(err){
   const m=String(err.message||err);
-  status((signupMode?'회원가입':'로그인')+' 실패: '+m+( /email signups are disabled|signup is disabled/i.test(m)?'\\nSupabase 대시보드에서 이메일 회원가입 허용 설정을 확인하세요.':'' ));
+  const authCode=String(err.code||'').toLowerCase();
+  if(!signupMode&&(/invalid.login.credentials|invalid_credentials|invalid_grant|email.not.confirmed/i.test(m)||['invalid_credentials','email_not_confirmed'].includes(authCode))){
+   status(authCode==='email_not_confirmed'||/email.not.confirmed/i.test(m)
+    ?'이메일 인증이 완료되지 않았습니다. 가입 시 받은 인증 메일을 확인해 주세요.'
+    :'이메일 또는 비밀번호가 올바르지 않습니다. 이메일과 비밀번호를 다시 한번 확인해 주세요.');
+  }else if(/too.many.requests|rate.limit|over.request.rate.limit/i.test(m)||authCode==='over_request_rate_limit'){
+   status('로그인 시도가 많습니다. 잠시 후 다시 시도해 주세요.');
+  }else if(/failed.to.fetch|network|fetch.failed/i.test(m)){
+   status('서버에 연결할 수 없습니다. 인터넷 연결을 확인하고 다시 시도해 주세요.');
+  }else{
+   status((signupMode?'회원가입':'로그인')+' 실패: '+m+(/email signups are disabled|signup is disabled/i.test(m)?'\\n이메일 회원가입 허용 설정을 확인해 주세요.':''));
+  }
  }finally{submitButton.disabled=false;signupButton.disabled=false}
 });
 document.getElementById('apCloudUpload').onclick=upload;
