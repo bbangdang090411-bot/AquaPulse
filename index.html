@@ -268,8 +268,9 @@ function apSciRender(){
  const groups=new Map();
  for(const row of apSciData.rows){if(!row||!Number.isFinite(Number(row.score)))continue;const id=String(row.tankId||'');const prev=groups.get(id);if(!prev||String(row.timestamp)>String(prev.timestamp))groups.set(id,row)}
  const sorted=[...groups].sort((a,b)=>Number(b[1].score)-Number(a[1].score));
+ const unmatched=sorted.filter(([id])=>!tanks.some(t=>String(t.id)===id)).length;
  const table=sorted.map(([id,row])=>{const t=tanks.find(x=>String(x.id)===id);const score=Number(row.score);return '<tr><td style="padding:6px">'+apExtraEscape(t?.name||id)+'</td><td style="padding:6px"><b>'+score.toFixed(1)+'/100</b></td><td style="padding:6px">'+(score>=95?'이상 의심':'일반 범위')+'</td></tr>'}).join('');
- el.innerHTML='<small>분석 시각: '+apExtraEscape(apSciData.generatedAt||'알 수 없음')+' · 총 '+apSciData.rows.length+'건 · 탐지 기준 95백분위</small><div style="overflow:auto;max-height:270px"><table style="width:100%;border-collapse:collapse;text-align:left"><thead><tr><th>수족관</th><th>점수</th><th>판정</th></tr></thead><tbody>'+table+'</tbody></table></div><small>실제 모델 분석 결과이며, 파일을 다시 선택하면 갱신됩니다. 수질 위험 확률이 아닙니다.</small>';
+ el.innerHTML=(unmatched?'<p style="color:#b45309">현재 수족관 ID와 일치하지 않는 분석 결과 '+unmatched+'개가 있습니다. CSV의 tank_id를 확인해 주세요.</p>':'')+'<small>분석 시각: '+apExtraEscape(apSciData.generatedAt||'알 수 없음')+' · 총 '+apSciData.rows.length+'건 · 탐지 기준 95백분위</small><div style="overflow:auto;max-height:270px"><table style="width:100%;border-collapse:collapse;text-align:left"><thead><tr><th>수족관</th><th>점수</th><th>판정</th></tr></thead><tbody>'+table+'</tbody></table></div><small>실제 모델 분석 결과이며, 파일을 다시 선택하면 갱신됩니다. 수질 위험 확률이 아닙니다.</small>';
 }
 // The advanced tools belong to settings, not central monitoring.
 // Move the existing DOM node before attaching its listeners.
@@ -288,7 +289,13 @@ document.getElementById('apExtraGrid').addEventListener('change',async e=>{
   if(data.rows.length>100000)throw Error('결과는 최대 10만 건까지 지원합니다.');
   if(!data.rows.every(x=>x&&typeof x.tankId==='string'&&typeof x.timestamp==='string'&&Number.isFinite(x.score)&&x.score>=0&&x.score<=100))throw Error('측정값 또는 점수 형식이 잘못되었습니다.');
   apSciData=data;
-  try{localStorage.setItem(apSciKey,JSON.stringify(data))}catch(err){console.warn('SCiForest cache storage failed',err)}
+  // Cache only the latest measurement per tank to avoid localStorage quota failures.
+  try{
+   const latest=new Map();
+   for(const row of data.rows){const id=String(row.tankId);const previous=latest.get(id);if(!previous||row.timestamp>previous.timestamp)latest.set(id,row)}
+   localStorage.setItem(apSciKey,JSON.stringify({...data,rows:[...latest.values()]}));
+  }catch(err){console.warn('SCiForest cache storage failed',err);alert('분석 결과는 현재 화면에서 볼 수 있지만 브라우저 저장 공간 부족으로 다음 방문 시 유지되지 않을 수 있습니다.')}
+
   apSciRender();
  }catch(err){alert('SCiForest 결과를 불러오지 못했습니다: '+err.message)}
  e.target.value='';
@@ -416,14 +423,30 @@ document.getElementById('restoreFullAqua').addEventListener('change',async e=>{
 
 /* Protect in-progress edits before any restore or remote re-render. */
 function apHasUnsavedEdits(){
- const active=document.activeElement;
- if(active&&active.matches?.('input:not([type="hidden"]):not([type="file"]), textarea, select')&&!active.disabled){
-  if(active.matches('input[type="checkbox"],input[type="radio"]'))return active.checked!==active.defaultChecked;
-  if(active.tagName==='SELECT')return [...active.options].some(o=>o.selected!==o.defaultSelected);
-  return active.value!==active.defaultValue;
- }
- return false;
+ // Check every field in visible editing dialogs, not only document.activeElement.
+ const dialogs=[...document.querySelectorAll('#addForm, #editOverlay, #modalOverlay')];
+ const visible=el=>!!el.getClientRects().length&&!el.closest('.hidden,[hidden]');
+ const dirty=el=>{
+  if(el.disabled||el.type==='hidden'||el.type==='file'||el.type==='button'||el.type==='submit')return false;
+  if(el.matches('input[type="checkbox"],input[type="radio"]'))return el.checked!==el.defaultChecked;
+  if(el.tagName==='SELECT')return [...el.options].some(o=>o.selected!==o.defaultSelected);
+  return el.value!==el.defaultValue;
+ };
+ if(dialogs.some(dialog=>visible(dialog)&&[...dialog.querySelectorAll('input,textarea,select')].some(el=>visible(el)&&dirty(el))))return true;
+ // Other editors may be outside dialogs. Track changes to their current values
+ // even after focus moves to another control.
+ return [...document.querySelectorAll('input,textarea,select')].some(el=>visible(el)&&el.dataset.apPendingEdit==='true');
 }
+document.addEventListener('input',e=>{
+ const el=e.target;
+ if(!el.matches?.('input,textarea,select')||el.closest('#apCloudGate'))return;
+ if(el.closest('#addForm,#editOverlay,#modalOverlay'))return;
+ if(el.matches('[type="search"],[type="file"]')||/search|filter|region|locationSearch/i.test(el.id))return;
+ if(el.closest('#apExtraGrid')||el.closest('#managePanel')){
+  if(!el.dataset.apOriginalValue)el.dataset.apOriginalValue=el.defaultValue||'';
+  el.dataset.apPendingEdit=String(el.value!==(el.dataset.apOriginalValue||''));
+ }
+},true);
 function apConfirmRestore(){
  return confirm('현재 브라우저의 데이터가 교체되고 페이지가 새로고침됩니다. 저장하지 않은 입력 내용이 사라질 수 있습니다. 필요한 내용을 저장하거나 백업했나요?');
 }
@@ -662,7 +685,6 @@ async function tankSyncRead(){
    // Preserve the cloud as authority on a newly connected browser; keep a local safety copy.
    try{localStorage.setItem('aquapulse-pre-sync-backup-'+Date.now(),JSON.stringify(local))}catch(e){console.warn('Cannot back up local tanks',e);tankSyncNotice('백업 공간 부족 · 자동 동기화 보류');return}
   }
-  tankSyncLastSeen=remote.updatedAt;
   if(JSON.stringify(local)!==JSON.stringify(remote.tanks)){
    if(apHasUnsavedEdits()){
     tankSyncNotice('입력 중인 내용 보호 · 원격 화면 갱신 보류');
@@ -672,8 +694,9 @@ async function tankSyncRead(){
    tankSyncNotice('최신 수족관 정보 수신');
    tanks=remote.tanks;
    if(selected&&!tanks.some(t=>t.id===selected))selected=tanks[0]?.id||'';
+   tankSyncLastSeen=remote.updatedAt;
    try{render()}catch(renderError){console.warn('Sync view refresh failed',renderError);tankSyncNotice('데이터 수신 완료 · 화면 갱신 실패')}
-  }else tankSyncNotice('동기화 완료');
+  }else{tankSyncLastSeen=remote.updatedAt;tankSyncNotice('동기화 완료');}
  }catch(e){console.warn('Tank sync check failed',e);tankSyncNotice('동기화 확인 실패')}
 }
 async function tankSyncWrite(){
