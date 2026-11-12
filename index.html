@@ -680,7 +680,7 @@ document.getElementById('apCloudDownload').onclick=download;
 // in the existing chunked backup; never rewrite the 60k-record manifest on edits.
 let tankSyncTimer=null,tankSyncBusy=false,tankSyncLastSeen='',tankSyncInitialized=false,tankSyncPending=false;
 const tankSyncKey='aquapulse-imported-tanks-v2';
-let tankSyncBase=null,tankSyncRetryCount=0,tankSyncRetryTimer=null,tankSyncHardConflict=false;
+let tankSyncBase=null,tankSyncRetryCount=0,tankSyncRetryTimer=null,tankSyncHardConflict=false,tankSyncRevision=0;
 function tankSyncNotice(message){const node=document.getElementById('apSyncIndicator');if(node)node.textContent=message;const messageNode=document.getElementById('apCloudMessage');if(messageNode&&activeUser&&/동기화|클라우드|백업|충돌|저장/.test(message))messageNode.textContent=message}
 const tankSame=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 function tankThreeWay(base,local,remote){
@@ -724,8 +724,16 @@ async function tankSyncRead(){
   if(remote.updatedAt===tankSyncLastSeen)return;
   const local=JSON.parse(localStorage.getItem(tankSyncKey)||'[]');
   if(!tankSyncBase&&!tankSame(local,remote.tanks)){
-   if(!tankSyncBackup(local,'aquapulse-initial-sync-')){tankSyncNotice('최초 동기화 보류 · 백업 실패');return}
-   tankSyncBlocked(local,'최초 동기화에서 브라우저와 클라우드 데이터가 다릅니다. 기준 데이터가 없어 안전한 자동 병합을 할 수 없으므로 덮어쓰지 않았습니다.');return;
+   // An empty browser has no edits to preserve: accept cloud data on first sign-in.
+   if(local.length===0){
+    if(apHasUnsavedEdits()){tankSyncNotice('입력 중 · 최초 동기화 보류');return}
+    localStorage.setItem(tankSyncKey,JSON.stringify(remote.tanks));tanks=remote.tanks;
+    if(selected&&!tanks.some(t=>t.id===selected))selected=tanks[0]?.id||'';
+    tankSyncBase=structuredClone(remote.tanks);tankSyncLastSeen=remote.updatedAt;
+    render();tankSyncNotice('클라우드 최초 동기화 완료');return;
+   }
+   // Nonempty browser data cannot be assumed to be an unmodified copy.
+   tankSyncBlocked(local,'기존 브라우저 데이터와 클라우드 데이터가 다릅니다. 자동 덮어쓰기를 방지했습니다.');return;
   }
   if(tankSyncBase&& !tankSame(local,tankSyncBase)){
    if(apHasUnsavedEdits()){tankSyncNotice('입력 중 · 원격 갱신 보류');return}
@@ -762,6 +770,7 @@ async function tankSyncWrite(){
  if(!activeUser||tankSyncBusy||tankSyncHardConflict)return;
  tankSyncBusy=true;
  let local;
+ const writeRevision=tankSyncRevision;
  try{
   local=JSON.parse(localStorage.getItem(tankSyncKey)||'[]');
   if(!Array.isArray(local))throw Error('수족관 데이터 형식 오류');
@@ -785,10 +794,21 @@ async function tankSyncWrite(){
     if(e)throw e;
     if(!written?.length)continue;
    }
-   localStorage.setItem(tankSyncKey,JSON.stringify(local));tanks=local;
+   // Do not overwrite edits made while the network request was in flight.
+   const latestLocal=JSON.parse(localStorage.getItem(tankSyncKey)||'[]');
+   const changedDuringWrite=tankSyncRevision!==writeRevision||!tankSame(latestLocal,JSON.parse(localStorage.getItem(tankSyncKey)||'[]'));
    tankSyncBase=structuredClone(local);tankSyncLastSeen=state.updatedAt;
+   tankSyncRetryCount=0;clearTimeout(tankSyncRetryTimer);
+   if(changedDuringWrite){
+    // Keep the latest local edits and reconcile against the just-saved cloud version.
+    tankSyncPending=true;
+    tankSyncNotice('추가 수정 감지 · 클라우드 재동기화 중');
+    clearTimeout(tankSyncTimer);tankSyncTimer=setTimeout(tankSyncWrite,900);
+    return;
+   }
+   localStorage.setItem(tankSyncKey,JSON.stringify(local));tanks=local;
    if(!apHasUnsavedEdits())render();
-   tankSyncPending=false;tankSyncRetryCount=0;clearTimeout(tankSyncRetryTimer);tankSyncNotice(attempt?'자동 병합 및 클라우드 동기화 완료':'클라우드 동기화 완료');return;
+   tankSyncPending=false;tankSyncNotice(attempt?'자동 병합 및 클라우드 동기화 완료':'클라우드 동기화 완료');return;
   }
   tankSyncBlocked(local,'동시 수정이 반복되어 안전하게 저장할 수 없습니다.');
  }catch(error){
@@ -801,7 +821,7 @@ async function tankSyncWrite(){
 }
 window.addEventListener('aquapulse:tanks-changed',()=>{
  if(!activeUser)return;
- tankSyncPending=true;tankSyncRetryCount=0;clearTimeout(tankSyncRetryTimer);clearTimeout(tankSyncTimer);
+ tankSyncRevision++;tankSyncPending=true;tankSyncRetryCount=0;clearTimeout(tankSyncRetryTimer);clearTimeout(tankSyncTimer);
  tankSyncNotice('브라우저 저장 완료 · 클라우드 동기화 중');
  tankSyncTimer=setTimeout(tankSyncWrite,900);
 });
