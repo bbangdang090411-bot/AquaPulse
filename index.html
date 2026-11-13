@@ -617,11 +617,30 @@ async function beginSession(){
   msg.textContent='대시보드는 정상 사용 가능 · Supabase 확인 실패: '+e.message;
  }
 }
+async function apLoadSupabaseLibrary(){
+ if(window.supabase?.createClient)return;
+ const sources=[
+  'https://unpkg.com/@supabase/supabase-js@2.57.0/dist/umd/supabase.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/supabase/2.57.0/supabase.min.js'
+ ];
+ for(const src of sources){
+  try{
+   await new Promise((resolve,reject)=>{
+    const script=document.createElement('script');
+    script.src=src;script.async=true;
+    script.onload=resolve;script.onerror=()=>reject(Error('CDN load failed'));
+    document.head.appendChild(script);
+   });
+   if(window.supabase?.createClient)return;
+  }catch(error){console.warn('Supabase library fallback unavailable:',src,error)}
+ }
+ throw Error('Supabase 라이브러리 로딩 실패: 네트워크 또는 CDN 차단 여부를 확인해 주세요.');
+}
 async function init(){
  const retry=document.getElementById('apCloudRetry');retry.hidden=true;
  const watchdog=setTimeout(()=>{if(gate&&!gate.hidden&&info.textContent.includes('연결 중')){locked('연결이 지연되고 있습니다. 네트워크 상태를 확인하고 다시 시도해 주세요.');status('서버 응답 지연 · 다시 시도할 수 있습니다.')}},12000);
  try{
- if(!window.supabase?.createClient)throw Error('Supabase 라이브러리를 불러오지 못했습니다. 인터넷 연결을 확인하세요.');
+ await apLoadSupabaseLibrary();
  client=window.supabase.createClient(PROJECT_URL,PUBLISHABLE_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
  window.apGeminiClient=client;
  await beginSession();
